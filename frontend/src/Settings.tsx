@@ -1,0 +1,18 @@
+import { useState } from 'react';
+
+type Props = { user: any; token: string; onToast: (message: string) => void };
+
+export default function Settings({ user, onToast }: Props) {
+  const [business, setBusiness] = useState({ name: 'ERM System', phone: '', email: '', address: '', city: 'Karachi', country: 'Pakistan', taxNumber: '' });
+  const [invoice, setInvoice] = useState({ salePrefix: 'INV-', purchasePrefix: 'PUR-', currency: 'PKR', decimals: '2', footer: 'Thank you for your business.' });
+  const update = (key: string, value: string) => setBusiness((current) => ({ ...current, [key]: value }));
+  const updateInvoice = (key: string, value: string) => setInvoice((current) => ({ ...current, [key]: value }));
+  return <div className="settings-page">
+    <section className="panel settings-hero"><div><p className="eyebrow">SYSTEM SETTINGS</p><h2>Workspace preferences</h2><p className="muted">Keep your business identity and printed documents consistent across the ERP.</p></div><span className="status in_stock">{user.role} access</span></section>
+    <div className="settings-grid">
+      <section className="panel"><div className="panel-title"><div><h2>Business profile</h2><p className="muted">Shown on invoices, receipts and reports.</p></div></div><div className="form-grid"><label>Business name<input value={business.name} onChange={(e) => update('name', e.target.value)} /></label><label>Phone<input value={business.phone} onChange={(e) => update('phone', e.target.value)} placeholder="+92 300 0000000" /></label><label>Email<input type="email" value={business.email} onChange={(e) => update('email', e.target.value)} placeholder="hello@business.pk" /></label><label>City<input value={business.city} onChange={(e) => update('city', e.target.value)} /></label><label className="wide">Address<textarea value={business.address} onChange={(e) => update('address', e.target.value)} placeholder="Business address" /></label><label>Country<input value={business.country} onChange={(e) => update('country', e.target.value)} /></label><label>Tax number <span className="optional">optional</span><input value={business.taxNumber} onChange={(e) => update('taxNumber', e.target.value)} /></label></div><button className="primary" onClick={() => onToast('Business settings saved locally')}>Save business profile</button></section>
+      <section className="panel"><div className="panel-title"><div><h2>Invoice preferences</h2><p className="muted">PKR is the default business currency.</p></div></div><div className="form-grid"><label>Sale prefix<input value={invoice.salePrefix} onChange={(e) => updateInvoice('salePrefix', e.target.value)} /></label><label>Purchase prefix<input value={invoice.purchasePrefix} onChange={(e) => updateInvoice('purchasePrefix', e.target.value)} /></label><label>Currency<select value={invoice.currency} onChange={(e) => updateInvoice('currency', e.target.value)}><option>PKR</option></select></label><label>Decimal places<select value={invoice.decimals} onChange={(e) => updateInvoice('decimals', e.target.value)}><option>0</option><option>2</option><option>3</option></select></label><label className="wide">Footer text<textarea value={invoice.footer} onChange={(e) => updateInvoice('footer', e.target.value)} /></label></div><button className="primary" onClick={() => onToast('Invoice preferences saved locally')}>Save invoice preferences</button></section>
+    </div>
+    <section className="panel security-card"><div><h2>Account security</h2><p className="muted">Signed in as <strong>{user.email}</strong>. Role changes are restricted to administrators.</p></div><span className="status in_stock">Protected session</span></section>
+  </div>;
+}

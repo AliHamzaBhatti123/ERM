@@ -1,0 +1,12 @@
+import { Router } from 'express';
+import { prisma } from '../db.js';
+import { hashPassword, verifyPassword } from '../utils/password.js';
+import { signToken } from '../utils/jwt.js';
+import { requireAuth, allowRoles } from '../middleware/auth.js';
+import { createUserSchema, loginSchema } from '../validators/auth.js';
+const router = Router();
+const publicUser = (u: { id:string; name:string; email:string; role:any }) => ({ id:u.id, name:u.name, email:u.email, role:u.role });
+router.post('/login', async (req, res, next) => { try { const input = loginSchema.parse(req.body); const user = await prisma.user.findUnique({ where:{ email:input.email.toLowerCase() } }); if (!user || user.status !== 'ACTIVE' || !(await verifyPassword(input.password, user.passwordHash))) return res.status(401).json({ message:'Invalid email or password' }); const safe = publicUser(user); await prisma.user.update({ where:{id:user.id}, data:{lastLoginAt:new Date()} }); res.json({ user:safe, token:signToken(safe) }); } catch(e) { next(e); } });
+router.get('/me', requireAuth, (req:any, res) => res.json({ user:req.user }));
+router.post('/users', requireAuth, allowRoles('ADMIN'), async (req, res, next) => { try { const input = createUserSchema.parse(req.body); const user = await prisma.user.create({ data:{...input, email:input.email.toLowerCase(), passwordHash:await hashPassword(input.password)}, select:{id:true,name:true,email:true,role:true} }); res.status(201).json({ user }); } catch(e) { next(e); } });
+export default router;
