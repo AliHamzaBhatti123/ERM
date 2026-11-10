@@ -4,16 +4,28 @@ import './styles.css';
 import Settings from './Settings';
 
 const API = 'http://localhost:4000/api';
+// Any request that sent a login token and got 401 back means the session is over (expired, revoked or the secret changed).
+// Tell the app so it can drop the stale token and show the login page. The login request itself sends no token, so a wrong password is not affected.
+const SESSION_EXPIRED_EVENT = 'erm-session-expired';
+const nativeFetch = window.fetch.bind(window);
+window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+  const response = await nativeFetch(input, init);
+  if (response.status === 401) {
+    const sentToken = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined)).has('Authorization');
+    if (sentToken) window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
+  }
+  return response;
+};
 type Category = { id: string; name: string; description?: string; status: string; _count?: { products: number } };
 type Product = { id: string; name: string; sku: string; barcode?: string; unit: string; purchasePrice: string; sellingPrice: string; currentStock: string; minimumStock: string; status: string; stockStatus: string; category: Category };
 type Party = { id: string; name: string; customerCode?: string; supplierCode?: string; phone?: string; email?: string; address?: string; advanceBalance: string; receivable?: number; payable?: number; status: string };
 const money = (v: string | number) => `Rs. ${Number(v).toLocaleString('en-PK', { maximumFractionDigits: 2 })}`;
 const label = (v: string) => v.replaceAll('_', ' ').toLowerCase().replace(/(^| )\w/g, (m) => m.toUpperCase());
 
-function Login({ onLogin }: { onLogin: (user: any, token: string) => void }) {
+function Login({ onLogin, notice }: { onLogin: (user: any, token: string) => void; notice?: string }) {
   const [email, setEmail] = useState('admin@erm.local'); const [password, setPassword] = useState('Admin@12345'); const [error, setError] = useState(''); const [busy, setBusy] = useState(false);
   async function submit(event: FormEvent) { event.preventDefault(); setBusy(true); setError(''); try { const r = await fetch(`${API}/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) }); const d = await r.json(); if (!r.ok) throw new Error(d.message || 'Login failed'); onLogin(d.user, d.token); } catch (e) { setError(e instanceof Error ? e.message : 'Unable to login'); } finally { setBusy(false); } }
-  return <main className="auth-page"><div className="auth-card"><div className="brand-mark">E</div><p className="eyebrow">ERM SYSTEM</p><h1>Welcome back</h1><p className="muted">Sign in to manage products and inventory.</p><form onSubmit={submit}><label>Email<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></label><label>Password<input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required /></label>{error && <div className="error">{error}</div>}<button className="primary full" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</button></form><p className="hint">Demo: admin@erm.local / Admin@12345</p></div></main>;
+  return <main className="auth-page"><div className="auth-card"><div className="brand-mark">E</div><p className="eyebrow">ERM SYSTEM</p><h1>Welcome back</h1><p className="muted">Sign in to manage products and inventory.</p>{notice && <div className="notice">{notice}</div>}<form onSubmit={submit}><label>Email<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></label><label>Password<input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required /></label>{error && <div className="error">{error}</div>}<button className="primary full" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</button></form><p className="hint">Demo: admin@erm.local / Admin@12345</p></div></main>;
 }
 
 function Shell({ user, token, onLogout }: { user: any; token: string; onLogout: () => void }) {
@@ -108,5 +120,16 @@ function CategoryModal({ onClose, onSave }: any) { const [name, setName] = useSt
 function AdjustModal({ product, onClose, onSave }: any) { const [type, setType] = useState('INCREASE'); const [quantity, setQuantity] = useState(''); const [note, setNote] = useState(''); return <Modal title="Adjust stock" onClose={onClose}><div className="adjust-current"><span>Current stock</span><strong>{product.currentStock} {product.unit}</strong></div><label>Adjustment type<select value={type} onChange={(e) => setType(e.target.value)}><option value="INCREASE">Increase stock</option><option value="DECREASE">Decrease stock</option></select></label><label>Quantity<input type="number" min="0.001" step="0.001" value={quantity} onChange={(e) => setQuantity(e.target.value)} required /></label><label>Note<textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Why is this adjustment being made?" /></label><ModalActions onClose={onClose} onSubmit={(e: FormEvent) => { e.preventDefault(); void onSave({ productId: product.id, type, quantity: Number(quantity), note }); }} /></Modal>; }
 function Modal({ title, onClose, children }: any) { return <div className="overlay"><form className="modal" onSubmit={(e) => e.preventDefault()}><div className="modal-head"><h2>{title}</h2><button type="button" onClick={onClose}>×</button></div>{children}</form></div>; }
 function ModalActions({ onClose, onSubmit }: any) { return <div className="modal-actions"><button type="button" onClick={onClose}>Cancel</button><button className="primary" type="submit" onClick={onSubmit}>Save</button></div>; }
-function App() { const [session, setSession] = useState<any>(() => { try { return JSON.parse(localStorage.getItem('erm-session') || 'null'); } catch { return null; } }); const login = (user: any, token: string) => { const value = { user, token }; localStorage.setItem('erm-session', JSON.stringify(value)); setSession(value); }; const logout = () => { localStorage.removeItem('erm-session'); setSession(null); }; return session ? <Shell user={session.user} token={session.token} onLogout={logout} /> : <Login onLogin={login} />; }
+function App() {
+  const [session, setSession] = useState<any>(() => { try { return JSON.parse(localStorage.getItem('erm-session') || 'null'); } catch { return null; } });
+  const [notice, setNotice] = useState('');
+  const login = (user: any, token: string) => { const value = { user, token }; localStorage.setItem('erm-session', JSON.stringify(value)); setNotice(''); setSession(value); };
+  const logout = () => { localStorage.removeItem('erm-session'); setSession(null); };
+  useEffect(() => {
+    const expired = () => { localStorage.removeItem('erm-session'); setSession(null); setNotice('Your session has expired or you were signed out. Please sign in again.'); };
+    window.addEventListener(SESSION_EXPIRED_EVENT, expired);
+    return () => window.removeEventListener(SESSION_EXPIRED_EVENT, expired);
+  }, []);
+  return session ? <Shell user={session.user} token={session.token} onLogout={logout} /> : <Login onLogin={login} notice={notice} />;
+}
 createRoot(document.getElementById('root')!).render(<App />);
